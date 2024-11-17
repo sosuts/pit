@@ -20,4 +20,3 @@ class TestInitCommand:
         command_tester.execute(inputs="-f")
         print(list(p.rglob("*")))
         print(command_tester.io.fetch_output())
-        pass

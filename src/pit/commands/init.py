@@ -1,9 +1,7 @@
 from pathlib import Path
 
 from cleo.commands.command import Command
-from cleo.helpers import argument, option
-
-from pit.objects import ProjectFileType
+from cleo.helpers import option
 
 
 class InitCommand(Command):
@@ -32,6 +30,6 @@ class InitCommand(Command):
             self.line(f"Pit project already exists at {str(pit_dir)}")
             return
 
-        for file_type in ProjectFileType:
+        for file_type in ("objects", "refs"):
             (pit_dir / file_type).mkdir(parents=True)
         self.line(f"Created project at {str(pit_dir)}")

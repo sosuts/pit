@@ -1,5 +1,3 @@
-from re import I
-
 from cleo.application import Application
 
 from pit.commands.init import InitCommand
