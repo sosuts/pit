@@ -1,43 +1,56 @@
 import hashlib
-from functools import lru_cache
 from string import Template
 
 
 class Blob:
-    PREFIX = Template("blob $length\0")
-
     def __init__(self, data: str | bytes) -> None:
-        """
-        Blobオブジェクトの初期化
+        """Initialize a Blob object.
 
-        :param data: バイナリまたは文字列のデータ
+        Args:
+            data (str | bytes): The content of the blob.
+
+        Raises:
+            ValueError: If the data is not str or bytes.
         """
         if isinstance(data, str):
-            # Gitではデータがバイナリで保持される
-            self.data = data.encode()
+            self.__data = data.encode()
         elif isinstance(data, bytes):
-            self.data = data
+            self.__data = data
         else:
-            raise ValueError("Data must be a string or bytes.")
+            raise ValueError("data must be str or bytes.")
 
     @property
-    @lru_cache
+    def template(self) -> Template:
+        """
+        Blobオブジェクトのテンプレート文字列を返す。
+        """
+        return Template("blob $length\0$data")
+
+    @property
+    def content(self) -> str:
+        """
+        Blobオブジェクトの内容を返す。
+        """
+        return self.template.substitute(length=len(self.data), data=self.data.decode())
+
+    @property
     def hash(self) -> str:
         """
         BlobのSHA-1ハッシュを計算。
         """
-        # fmt: off
-        prefix = self.PREFIX.substitute(length=len(self.data)).encode()
-        sha1 = hashlib.sha1(prefix + self.data)
-        # cliは出力の末尾に改行コードを含めることが多いらしい
-        return sha1.hexdigest() + "\n"
+        content = self.content.encode()
+        sha1 = hashlib.sha1(content).hexdigest()
+        return sha1
 
     def save(self, file_path: str) -> None:
+        """Blobオブジェクトをファイルに保存。
+
+        Args:
+            file_path (str): 保存するファイルのパス
         """
-        Blobデータを指定されたファイルに保存。
-        """
+        content = self.content.encode()
         with open(file_path, "wb") as f:
-            f.write(self.data)
+            f.write(content)
 
     @staticmethod
     def load_from_file(file_path: str) -> "Blob":
@@ -49,4 +62,42 @@ class Blob:
         """
         with open(file_path, "rb") as f:
             data = f.read()
+            if not data.startswith(b"blob "):
+                raise ValueError("Invalid blob object.")
+            data = data[data.index(b"\0") + 1 :]
         return Blob(data)
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Blobオブジェクト同士を比較。
+        """
+        if not isinstance(other, Blob):
+            return NotImplemented
+        return self.hash == other.hash
+
+    def __repr__(self) -> str:
+        """
+        Blobオブジェクトの文字列表現を返す。
+        """
+        return f"Blob(hash={self.hash.strip()}, size={len(self.__data)})"
+
+    @property
+    def size(self) -> int:
+        """
+        Blobデータのサイズを返す。
+        """
+        return len(self.__data)
+
+    @property
+    def data(self) -> bytes:
+        """
+        Blobデータを返す。
+        """
+        return self.__data
+
+    @property
+    def type(self) -> str:
+        """
+        Blobのタイプを返す。
+        """
+        return "blob"
