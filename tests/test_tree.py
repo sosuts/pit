@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 from pit.objects.blob import Blob
 from pit.objects.tree import Tree, TreeEntry
@@ -16,13 +17,14 @@ def create_tree_from_directory(directory_path: str) -> Tree:
 
     for root, dirs, files in os.walk(directory_path):
         for file_name in files:
-            if subprocess.run(
-                ["git", "check-ignore", str(file_name)],
+            file_path = os.path.join(root, file_name)
+            gitignore_result = subprocess.run(
+                ["git", "check-ignore", str(file_path)],
                 capture_output=True,
                 text=True,
-            ).stdout:
+            )
+            if gitignore_result.stdout:
                 continue
-            file_path = os.path.join(root, file_name)
             with open(file_path, "rb") as f:
                 file_content = f.read()
             blob = Blob(file_content)
@@ -32,17 +34,21 @@ def create_tree_from_directory(directory_path: str) -> Tree:
             entries.append(TreeEntry(mode, relative_path, blob_hash))
 
         for dir_name in dirs:
-            dir = os.path.join(root, dir_name)
-            if subprocess.run(
-                ["git", "check-ignore", str(dir)],
+            dir_ = os.path.join(root, dir_name)
+            # dir_の末尾が.gitフォルダは無視
+            if dir_.endswith(".git"):
+                continue
+            gitignore_result = subprocess.run(
+                ["git", "check-ignore", str(dir_)],
                 capture_output=True,
                 text=True,
-            ).stdout:
+            )
+            if gitignore_result.stdout:
                 continue
             dir_path = os.path.join(root, dir_name)
             sub_tree = create_tree_from_directory(dir_path)
             sub_tree_hash = sub_tree.hash
-            mode = "040000"  # ディレクトリのモード
+            mode = "40000"  # ディレクトリのモード
             relative_path = os.path.relpath(dir_path, directory_path)
             entries.append(TreeEntry(mode, relative_path, sub_tree_hash))
 
@@ -55,31 +61,29 @@ def create_tree_from_directory(directory_path: str) -> Tree:
 
 
 class TestTree:
-    def test_src_hash(self):
-        """Gitと同じハッシュ値になるか確認する"""
+    def test_src_hash(self, tmp_path):
+        """一時的なgitリポジトリでGitと同じハッシュ値になるか確認する"""
 
-        # assert tree.hash == git_hash.strip()
-        subprocess.run(
-            ["git", "stash", "push", "-u", "-m", "Temporary stash"], check=True
-        )
-        try:
-            # すべての変更をインデックスに追加
-            subprocess.run(["git", "add", "-A"], check=True)
+        # 一時ディレクトリにリポジトリを作成
+        repo_path = Path(tmp_path / "repo")
+        (repo_path / "src").mkdir(parents=True, exist_ok=False)
+        (repo_path / "src" / "a.txt").write_text("Hello, World!")
+        (repo_path / "b.txt").write_text("Hello, World2!\naaaa")
+        os.chdir(repo_path)
 
-            # Gitのツリーオブジェクトを生成
-            git_hash = subprocess.run(
-                ["git", "write-tree"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
+        # 一時リポジトリのhashを確認するためにGitの初期化とコミットを行う
+        subprocess.run(["git", "init"], check=True)
+        subprocess.run(["git", "add", "-A"], check=True)
 
-            # Tree.pyで生成したツリーオブジェクト
-            tree = create_tree_from_directory("/home/sosuts/repository/pit")
-            assert (
-                tree.hash == git_hash
-            ), f"Tree hashes do not match! {tree.hash} != {git_hash}"
+        # Gitのツリーオブジェクトを生成
+        git_hash = subprocess.run(
+            ["git", "write-tree"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
 
-        finally:
-            # インデックスを復元
-            subprocess.run(["git", "stash", "pop", "--index"], check=True)
+        tree = create_tree_from_directory(str(repo_path))
+        assert (
+            tree.hash == git_hash
+        ), f"Tree hashes do not match! {tree.hash} != {git_hash}"

@@ -1,5 +1,4 @@
 import hashlib
-from string import Template
 
 
 class TreeEntry:
@@ -16,17 +15,7 @@ class TreeEntry:
         self.hash = hash
 
     def to_bytes(self) -> bytes:
-        # modeとnameはASCIIで、ハッシュは20バイトのバイナリ
         return f"{self.mode} {self.name}\0".encode() + bytes.fromhex(self.hash)
-
-    def to_str(self) -> str:
-        """
-        TreeEntryオブジェクトを文字列形式に変換
-
-        :return: 文字列形式のTreeEntry
-        """
-        _hash = self.hash.split("\n")[0]
-        return f"{self.mode} {self.type()} {_hash}\t{self.name}"
 
     @staticmethod
     def from_bytes(data: bytes) -> "TreeEntry":
