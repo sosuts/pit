@@ -1,4 +1,9 @@
 import hashlib
+import subprocess
+from pathlib import Path
+
+from pit import util
+from pit.objects.blob import Blob
 
 
 class TreeEntry:
@@ -39,6 +44,8 @@ class TreeEntry:
         """
         if self.mode == "40000":
             return "tree"
+        elif self.mode == "120000":
+            return "symlink"
         else:
             return "blob"
 
@@ -70,6 +77,11 @@ class Tree:
 
     @property
     def data(self) -> bytes:
+        # docstring
+        """
+        Treeのエントリをバイト列に変換
+        :return: Treeのエントリをバイト列に変換したもの
+        """
         return b"".join(entry.to_bytes() for entry in self.entries)
 
     @property
@@ -84,3 +96,54 @@ class Tree:
         """
         with open(file_path, "wb") as f:
             f.write(self.content)
+
+    @staticmethod
+    def from_directory(directory: str) -> "Tree":
+        """
+        指定されたディレクトリからツリーオブジェクトを作成
+
+        :param directory: ディレクトリのパス
+        :return: 作成されたTreeオブジェクト
+        """
+
+        entries = []
+        dir_path = Path(directory)
+
+        for entry in dir_path.iterdir():
+            if entry.name == ".git":
+                continue
+            # gitignoreチェック
+            gitignore_result = subprocess.run(
+                ["git", "check-ignore", str(entry.resolve())],
+                capture_output=True,
+                text=True,
+            )
+            if gitignore_result.stdout:
+                continue
+            mode = util.get_file_permission(str(entry))
+
+            if entry.is_symlink():
+                # シンボリックリンクのリンク先パスをblobとして保存
+                link_target = entry.readlink()
+                blob = Blob(str(link_target).encode("utf-8"))
+                tree_entry = TreeEntry(mode, entry.name, blob.hash)
+                entries.append(tree_entry)
+            elif entry.is_file():
+                with entry.open("rb") as f:
+                    file_content = f.read()
+                tree_entry = TreeEntry(mode, entry.name, Blob(file_content).hash)
+                entries.append(tree_entry)
+            elif entry.is_dir():
+                entries.append(
+                    TreeEntry(
+                        mode,
+                        entry.name,
+                        Tree.from_directory(str(entry)).hash,
+                    )
+                )
+            else:
+                raise ValueError(f"Unsupported entry type: {entry}")
+
+        # 名前順でソート
+        entries = sorted(entries, key=lambda x: x.name)
+        return Tree(entries)
