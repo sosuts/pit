@@ -1,0 +1,18 @@
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run tests
+        run: pytest --tb=short --disable-warnings > pytest_result.log
+      - name: Update README
+        run: python scripts/update_readme.py
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "docs: update README implemented commands"
+          git push
