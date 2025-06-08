@@ -1,22 +1,23 @@
-# import os
-# from pathlib import Path
+import subprocess
 
-# from cleo.application import Application
-# from cleo.testers.command_tester import CommandTester
-
-# from pit.commands.init import InitCommand
+from pit.cli.commands.cli import InitArgs, InitCommand
 
 
-# # use tempdir fixture
-# class TestInitCommand:
-#     def test_nothing(self, tmpdir):
-#         p = Path(tmpdir)
-#         os.chdir(p)
-#         application = Application()
-#         application.add(InitCommand())
+def test_init_command_creates_expected_files_and_dirs(tmp_path):
+    """Test the InitCommand to ensure it creates the expected .pit directory and initializes a git repository."""
+    repo_path = tmp_path / "pit-test"
+    repo_path.mkdir()
 
-#         command = application.find("init")
-#         command_tester = CommandTester(command)
-#         command_tester.execute(inputs="-f")
-#         print(list(p.rglob("*")))
-#         print(command_tester.io.fetch_output())
+    args = InitArgs(force=False, path=str(repo_path))
+    cmd = InitCommand()
+    cmd.execute(args)
+
+    pit_dir = repo_path / ".pit"
+    assert pit_dir.exists() and pit_dir.is_dir()
+
+    subprocess.run(["git", "init"], cwd=repo_path, check=True)
+
+    git_items = set(p.name for p in (repo_path / ".git").iterdir())
+    pit_items = set(p.name for p in pit_dir.iterdir())
+
+    assert pit_items == git_items
