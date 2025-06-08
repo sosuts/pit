@@ -19,5 +19,4 @@ def test_init_command_creates_expected_files_and_dirs(tmp_path):
 
     git_items = set(p.name for p in (repo_path / ".git").iterdir())
     pit_items = set(p.name for p in pit_dir.iterdir())
-
     assert pit_items == git_items

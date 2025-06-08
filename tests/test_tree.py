@@ -30,9 +30,9 @@ class TestTree:
         ).stdout.strip()
 
         tree = Tree.from_directory(str(repo_path))
-        assert (
-            tree.hash == git_hash
-        ), f"Tree hashes do not match! {tree.hash} != {git_hash}"
+        assert tree.hash == git_hash, (
+            f"Tree hashes do not match! {tree.hash} != {git_hash}"
+        )
 
     def test_symlink_hash(self, tmp_path):
         # 一時ディレクトリにリポジトリを作成
@@ -60,6 +60,6 @@ class TestTree:
         tree = Tree.from_directory(str(repo_path))
         for entry in tree.entries:
             print(entry)
-        assert (
-            tree.hash == git_hash
-        ), f"Tree hashes do not match! {tree.hash} != {git_hash}"
+        assert tree.hash == git_hash, (
+            f"Tree hashes do not match! {tree.hash} != {git_hash}"
+        )
