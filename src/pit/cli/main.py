@@ -1,4 +1,4 @@
-from pit.cli.commands.base import PitCLI
+from pit.cli.commands.cli import PitCLI
 
 
 def main():
