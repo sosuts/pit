@@ -1,5 +1,6 @@
 import hashlib
 import subprocess
+import zlib
 from pathlib import Path
 
 from pit import util
@@ -88,14 +89,33 @@ class Tree:
     def hash(self) -> str:
         return hashlib.sha1(self.content).hexdigest()
 
-    def save(self, file_path: str) -> None:
+    def save(self, file_path: str | None = None, base_path: str = ".") -> None:
         """
-        Treeデータを指定されたファイルに保存
+        Treeデータを指定されたファイルに保存し、参照するblobやtreeも保存
+        """
+        for entry in self.entries:
+            if entry.type() == "tree":
+                # サブツリーの絶対パスを解決
+                sub_tree_path = Path(base_path) / entry.name
+                Tree.from_directory(str(sub_tree_path)).save(
+                    base_path=str(sub_tree_path)
+                )
+            elif entry.type() == "blob" or entry.type() == "symlink":
+                # 必要ならここで保存処理を追加
+                pass
 
-        :param file_path: 保存するファイルのパス
-        """
+        # 自身のtreeオブジェクトを保存
+        if file_path is None:
+            file_path = f".pit/objects/{self.hash[0:2]}/{self.hash[2:]}"
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "wb") as f:
-            f.write(self.content)
+            f.write(zlib.compress(self.content))
+
+    def _find_entry_path(self, name: str) -> str:
+        # Treeのディレクトリパスからエントリ名でパスを返す（必要に応じて実装）
+        return name
 
     @staticmethod
     def from_directory(directory: str) -> "Tree":
