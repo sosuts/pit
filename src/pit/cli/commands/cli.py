@@ -73,7 +73,7 @@ class PitCLI:
 
 class InitCommand(AbstractCommand):
     DEFAULT_FILES = ("HEAD", "config", "description")
-    DEFAULT_DIRS = ("branches", "hooks", "info", "objects", "refs")
+    DEFAULT_DIRS = ("hooks", "info", "objects", "refs")
 
     def add_arguments(self, parser: argparse.ArgumentParser):
         parser.add_argument(
