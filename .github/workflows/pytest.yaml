@@ -18,6 +18,8 @@ jobs:
           sudo add-apt-repository ppa:git-core/ppa -y
           sudo apt-get update
           sudo apt-get install git -y
+          git config --global user.email "test@mail.com"
+          git config --global user.name "test_name"
           git --version
 
       - name: Install the latest version of uv
