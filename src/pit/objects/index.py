@@ -1,7 +1,6 @@
 import hashlib
 import struct
 from dataclasses import dataclass
-from pathlib import Path
 from typing import ClassVar
 
 
@@ -13,14 +12,14 @@ class IndexEntry:
         "I"  # 2. Creation time in nanoseconds
         "I"  # 3. Modification time in seconds
         "I"  # 4. Modification time in nanoseconds
-        "I"  # 5. Device ID I
-        "I"  # 6. Inode number I
-        "I"  # 7. Mode I
-        "I"  # 8. User ID I
-        "I"  # 9. Group ID I
-        "I"  # 10. File size I
-        "20s"  # 11. Object ID
-        "H"  # 12. 3-bit unused
+        "I"  # 5. Device ID
+        "I"  # 6. Inode number
+        "I"  # 7. Mode
+        "I"  # 8. User ID
+        "I"  # 9. Group ID
+        "I"  # 10. File size
+        "20s"  # 11. Object ID (SHA-1 hash)
+        "H"  # 12. Flags (name length + stage + extended flag)
     )
     ctime: int  # Creation time in seconds
     ctime_ns: int  # Creation time in nanoseconds
@@ -45,7 +44,9 @@ class IndexEntry:
             struct.pack(
                 self.BINARY_FORMAT,
                 self.ctime,
+                self.ctime_ns,
                 self.mtime,
+                self.mtime_ns,
                 self.dev,
                 self.ino,
                 self.mode,
@@ -67,7 +68,6 @@ class IndexEntry:
         if len(data) < offset + struct.calcsize(cls.BINARY_FORMAT):
             raise ValueError("Insufficient data for index entry")
         entry_data = struct.unpack_from(cls.BINARY_FORMAT, data, offset)
-
         (
             ctime,  # 1. Creation time in seconds
             ctime_ns,  # 2. Creation time in nanoseconds
@@ -92,21 +92,25 @@ class IndexEntry:
                 f"Pit only supports basic index entries, not extended ones: {flags:#x}"
             )
         name_length = flags & 0xFFF
-        name_start = offset + struct.calcsize(cls.BINARY_FORMAT[0:])
+        name_start = offset + struct.calcsize(cls.BINARY_FORMAT)
         name_end = name_start + name_length
 
         if len(data) < name_end:
             raise ValueError("Insufficient data for entry name")
 
-        name = data[name_start:name_end].decode("utf-8", errors="replace")
-        print(f"Name length: {name_length}")
-        print(f"Name: {name}")
-        null_pos = data.find(b"\0", name_end)
+        # Find null terminator after name
+        null_pos = data.find(b"\0", name_start)
         if null_pos == -1:
             raise ValueError("Missing null terminator for entry name")
 
-        entry_end = null_pos + 1
-        padding_end = (entry_end + 7) & ~7
+        name = data[name_start:null_pos].decode("utf-8")
+
+        # Calculate padding to align to 8-byte boundary
+        entry_size = (
+            struct.calcsize(IndexEntry.BINARY_FORMAT) + len(name.encode("utf-8")) + 1
+        )
+        padding_length = (8 - (entry_size % 8)) % 8
+        padding_end = null_pos + 1 + padding_length
 
         entry = IndexEntry(
             ctime,
@@ -120,11 +124,25 @@ class IndexEntry:
             gid,
             size,
             hash_bytes,
-            flags & 0xF000,
+            flags,
             name,
         )
-
         return entry, padding_end
+
+    @property
+    def object_type(self) -> int:
+        """modeからobject_typeを取得する。
+        modeの上位4ビットを取得
+        """
+        return (self.mode >> (len(format(self.mode, "b")) - 4)) & 0b1111
+
+    @property
+    def unix_permission(self) -> int:
+        """
+        modeからunix_permissionを取得する。
+        unix_permissionは、modeの下位9ビット
+        """
+        return self.mode & 0x1FF
 
 
 class Index:
@@ -135,19 +153,8 @@ class Index:
     def __init__(self) -> None:
         self.entries: list[IndexEntry] = []
 
-    def add_entry(self, entry: IndexEntry) -> None:
-        self.entries.append(entry)
-        self.entries.sort(key=lambda e: e._name)
-
     @classmethod
-    def load(cls, repo_path: str) -> "Index":
-        index_path = Path(repo_path) / ".git" / "index"
-        if not index_path.exists():
-            return cls()
-
-        with open(index_path, "rb") as f:
-            data = f.read()
-
+    def load(cls, data: bytes) -> "Index":
         if len(data) < 32:
             raise ValueError("Index file too small")
 
@@ -175,29 +182,3 @@ class Index:
             index.entries.append(entry)
 
         return index
-
-    def save(self, repo_path: str) -> None:
-        index_path = Path(repo_path) / ".pit" / "index"
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-
-        header = struct.pack(">4sII", self.SIGNATURE, self.VERSION, len(self.entries))
-
-        entries_data = b""
-        for entry in sorted(self.entries, key=lambda e: e.name):
-            entries_data += entry.to_bytes()
-
-        content = header + entries_data
-        checksum = hashlib.sha1(content).digest()
-
-        with open(index_path, "wb") as f:
-            f.write(content + checksum)
-
-    def clear(self) -> None:
-        self.entries.clear()
-
-
-# test the Index class
-if __name__ == "__main__":
-    oid_hex = "e33811f69f708bae49bf965e57fa0db36f1a540d"
-    oid_bytes = bytes.fromhex(oid_hex).hex()
-    index = Index.load("/home/sosuts/repository/pit/")
